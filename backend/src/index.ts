@@ -2,7 +2,7 @@
 import express from 'express';
 import cors from 'cors';
 import 'dotenv/config';
-import { GoogleGenAI, Modality, type Part } from "@google/genai";
+import { GoogleGenAI, Modality } from "@google/genai";
 
 // --- SERVER SETUP ---
 const app = express();
