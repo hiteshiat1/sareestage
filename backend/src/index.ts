@@ -1,7 +1,7 @@
 import express, { Request, Response, NextFunction } from "express";
 import "dotenv/config";
 import { GoogleGenAI, Modality } from "@google/genai";
-import cors;
+
 // ---------- Minimal domain types ----------
 type Base64 = string;
 
