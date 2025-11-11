@@ -8,30 +8,59 @@ import { GoogleGenAI, Modality, type Part } from "@google/genai";
 const app = express();
 const port = process.env.PORT || 3001;
 
-// --- MIDDLEWARE ---
-// Specific CORS configuration to allow your frontend origin
-const allowedOrigins = [
-  'https://sareestage-v2-887514490287.us-west1.run.app',
-  // If you run your frontend locally for development, you can add its origin here
-  // e.g., 'http://localhost:3000'
-];
+/**
+ * Define ALL browser origins that will call this API.
+ * Add/adjust as needed (exact scheme+host).
+ */
+const ALLOWED_ORIGINS = new Set([
+  'https://sareestage-v2-887514490287.us-west1.run.app', // Cloud Run frontend
+  'https://sareestage.com',                               // your main domain (if used from browser)
+  'https://sareestage.web.app',                           // Firebase Hosting (if used)
+  'http://localhost:3000',                                // Next/CRA dev
+  'http://localhost:5173',                                // Vite dev
+]);
 
-app.use(cors({
-  origin: (origin, callback) => {
-    // Allow requests with no origin (like mobile apps or curl) or from the whitelist
-    if (!origin || allowedOrigins.indexOf(origin) !== -1) {
-      callback(null, true);
-    } else {
-      callback(new Error('Not allowed by CORS'));
-    }
-  },
-}));
+/**
+ * Whether the browser sends cookies/Authorization to this API.
+ * If you set this to true, you MUST echo the exact origin (no *) and
+ * set credentials: 'include' on the client.
+ */
+const USE_CREDENTIALS = false;
 
-// FIX: The original `app.use(express.json(...))` was causing a TypeScript
-// type error, likely due to a dependency version mismatch. Explicitly
-// providing the path ('/') as the first argument helps TypeScript correctly
-// resolve the 'app.use' overload for middleware.
-app.use('/', express.json({ limit: '20mb' })); // Increase limit to handle base64 images
+// --- CORS MIDDLEWARE ---
+const corsOptionsDelegate = (req, callback) => {
+  const origin = req.header('Origin');
+  const corsOptions = {
+    origin: false,
+    credentials: USE_CREDENTIALS,
+    methods: ['GET', 'POST', 'OPTIONS'],
+    allowedHeaders: ['Content-Type', 'Authorization'],
+    optionsSuccessStatus: 204,
+  };
+
+  if (!origin) {
+    // Non-browser clients (curl/postman) -> allow
+    corsOptions.origin = true;
+  } else if (ALLOWED_ORIGINS.has(origin)) {
+    corsOptions.origin = origin; // echo exact origin for safety
+  }
+
+  callback(null, corsOptions);
+};
+
+// Apply CORS for all routes
+app.use((req, res, next) => {
+  // Ensure Vary: Origin so caches/CDNs don't mix responses
+  res.setHeader('Vary', 'Origin');
+  next();
+});
+app.use(cors(corsOptionsDelegate));
+// Explicitly handle preflight for every path
+app.options('*', cors(corsOptionsDelegate));
+
+// Body parser (increase limit for base64)
+app.use(express.json({ limit: '20mb' }));
+
 
 // --- GEMINI API SETUP ---
 if (!process.env.API_KEY) {
