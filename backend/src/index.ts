@@ -2,11 +2,12 @@
 import express from 'express';
 import cors from 'cors';
 import 'dotenv/config';
-import { GoogleGenAI, Modality } from "@google/genai";
+import { GoogleGenAI, Modality, type Part } from "@google/genai";
 
 // --- SERVER SETUP ---
 const app = express();
 const port = process.env.PORT || 3001;
+
 
 /**
  * Define ALL browser origins that will call this API.
@@ -28,7 +29,7 @@ const ALLOWED_ORIGINS = new Set([
 const USE_CREDENTIALS = false;
 
 // --- CORS MIDDLEWARE ---
-const corsOptionsDelegate = (req, callback) => {
+const corsOptionsDelegate = (req: { header: (arg0: string) => any; }, callback: (arg0: null,arg1: { origin: boolean; credentials: boolean; methods: string[]; allowedHeaders: string[]; optionsSuccessStatus: number; }) => void) => {
   const origin = req.header('Origin');
   const corsOptions = {
     origin: false,
