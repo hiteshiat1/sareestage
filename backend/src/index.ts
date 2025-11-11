@@ -63,7 +63,8 @@ const corsOptionsDelegate: CorsOptionsDelegate<CorsRequest> = (
   req: CorsRequest,
   callback
 ) => {
-  const origin = req.header("Origin");
+  // use headers (lowercase 'origin' in Node's IncomingHttpHeaders)
+  const origin = req.headers.origin as string | undefined;
   const opts: CorsOptions = {
     origin: false,
     credentials: USE_CREDENTIALS,
