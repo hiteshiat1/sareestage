@@ -1,5 +1,5 @@
 import express, { Request, Response, NextFunction } from "express";
-import cors, { CorsOptions, CorsOptionsDelegate, CorsRequest } from "cors";
+import cors from "cors";
 import "dotenv/config";
 import { GoogleGenAI, Modality } from "@google/genai";
 
@@ -37,18 +37,6 @@ type Part =
 const app = express();
 const port = Number(process.env.PORT || 3001);
 
-// Origins that are allowed to call this API from a browser
-const ALLOWED_ORIGINS = new Set<string>([
-  "https://sareestage-v2-887514490287.us-west1.run.app", // Cloud Run FE
-  "https://sareestage.com",
-  "https://sareestage.web.app",
-  "http://localhost:3000",
-  "http://localhost:5173",
-]);
-
-// Whether you expect browser cookies/Authorization to this API
-const USE_CREDENTIALS = false;
-
 // Body parser (20MB for base64 images)
 app.use(express.json({ limit: "20mb" }));
 
@@ -59,33 +47,9 @@ app.use((_: Request, res: Response, next: NextFunction) => {
 });
 
 // ---------- CORS config ----------
-const corsOptionsDelegate: CorsOptionsDelegate<CorsRequest> = (
-  req: CorsRequest,
-  callback
-) => {
-  const origin = req.header("Origin");
-  const opts: CorsOptions = {
-    origin: false,
-    credentials: USE_CREDENTIALS,
-    methods: ["GET", "POST", "OPTIONS"],
-    allowedHeaders: ["Content-Type", "Authorization"],
-    optionsSuccessStatus: 204,
-  };
-
-  if (!origin) {
-    // Non-browser clients (curl/postman) -> allow
-    opts.origin = true;
-  } else if (ALLOWED_ORIGINS.has(origin)) {
-    // Echo back exact origin for browsers
-    opts.origin = origin;
-  }
-
-  callback(null, opts);
-};
-
-app.use(cors(corsOptionsDelegate));
-// Ensure every preflight gets answered
-app.options("*", cors(corsOptionsDelegate));
+// Allow all origins for simplicity. In a production environment, you would want
+// to restrict this to your frontend's specific domain.
+app.use(cors());
 
 // ---------- Gemini setup ----------
 if (!process.env.API_KEY) {
