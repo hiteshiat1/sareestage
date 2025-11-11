@@ -18,7 +18,7 @@ interface SareeSpecificationForApi {
 
 // The backend URL. In development, this would be 'http://localhost:3001'.
 // In production, it would be the URL of your deployed backend server.
-const API_BASE_URL = ''; 
+const API_BASE_URL = 'https://sareestage-hitesh-gp-apps.vercel.app'; 
 
 /**
  * A helper function to handle fetch requests to our backend proxy.

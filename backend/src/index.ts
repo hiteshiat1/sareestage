@@ -9,8 +9,29 @@ const app = express();
 const port = process.env.PORT || 3001;
 
 // --- MIDDLEWARE ---
-app.use(cors()); // Enable CORS for all routes
-app.use(express.json({ limit: '20mb' })); // Increase limit to handle base64 images
+// Specific CORS configuration to allow your frontend origin
+const allowedOrigins = [
+  'https://sareestage-v2-887514490287.us-west1.run.app',
+  // If you run your frontend locally for development, you can add its origin here
+  // e.g., 'http://localhost:3000'
+];
+
+app.use(cors({
+  origin: (origin, callback) => {
+    // Allow requests with no origin (like mobile apps or curl) or from the whitelist
+    if (!origin || allowedOrigins.indexOf(origin) !== -1) {
+      callback(null, true);
+    } else {
+      callback(new Error('Not allowed by CORS'));
+    }
+  },
+}));
+
+// FIX: The original `app.use(express.json(...))` was causing a TypeScript
+// type error, likely due to a dependency version mismatch. Explicitly
+// providing the path ('/') as the first argument helps TypeScript correctly
+// resolve the 'app.use' overload for middleware.
+app.use('/', express.json({ limit: '20mb' })); // Increase limit to handle base64 images
 
 // --- GEMINI API SETUP ---
 if (!process.env.API_KEY) {
