@@ -1,13 +1,11 @@
-
 import express from 'express';
 import cors from 'cors';
 import 'dotenv/config';
-import { GoogleGenAI, Modality, type Part } from "@google/genai";
+import { GoogleGenAI, Modality } from "@google/genai"; // <-- remove `type Part` in JS files
 
 // --- SERVER SETUP ---
 const app = express();
 const port = process.env.PORT || 3001;
-
 
 /**
  * Define ALL browser origins that will call this API.
@@ -29,7 +27,7 @@ const ALLOWED_ORIGINS = new Set([
 const USE_CREDENTIALS = false;
 
 // --- CORS MIDDLEWARE ---
-const corsOptionsDelegate = (req: { header: (arg0: string) => any; }, callback: (arg0: null,arg1: { origin: boolean; credentials: boolean; methods: string[]; allowedHeaders: string[]; optionsSuccessStatus: number; }) => void) => {
+const corsOptionsDelegate = (req, callback) => {
   const origin = req.header('Origin');
   const corsOptions = {
     origin: false,
@@ -62,7 +60,6 @@ app.options('*', cors(corsOptionsDelegate));
 // Body parser (increase limit for base64)
 app.use(express.json({ limit: '20mb' }));
 
-
 // --- GEMINI API SETUP ---
 if (!process.env.API_KEY) {
   throw new Error("API_KEY environment variable not set.");
@@ -71,9 +68,6 @@ const ai = new GoogleGenAI({ apiKey: process.env.API_KEY });
 const generationModel = 'gemini-2.5-flash-image';
 
 // --- PROMPT TEMPLATE ---
-//  CRITICAL STEP: Replace the content of this variable with the full, detailed
-//  prompt you developed for the saree generation. This is the "brain" of your application.
-// 
 const SAREE_PROMPT_TEMPLATE = `
 **Objective:** Create a photorealistic virtual try-on image of a person wearing a saree, based on provided images.
 
@@ -108,109 +102,102 @@ Superimpose the provided saree (using its body, pallu, and border details) onto 
 
 
 // --- ERROR HANDLING ---
-const getApiErrorMessage = (error: unknown): string => {
-    console.error("Gemini API Error:", error);
-    if (error instanceof Error) {
-        const message = error.message || '';
-        if (message.includes('SAFETY')) return "The generation was blocked for safety reasons. Please try a different photo.";
-        if (message.includes('429')) return "The service is experiencing high traffic. Please try again later.";
-        return "An unexpected error occurred during generation.";
-    }
-    return "An unknown error occurred.";
+const getApiErrorMessage = (error) => {
+  console.error("Gemini API Error:", error);
+  if (error instanceof Error) {
+    const message = error.message || '';
+    if (message.includes('SAFETY')) return "The generation was blocked for safety reasons. Please try a different photo.";
+    if (message.includes('429')) return "The service is experiencing high traffic. Please try again later.";
+    return "An unexpected error occurred during generation.";
+  }
+  return "An unknown error occurred.";
 };
 
 // --- API ROUTES ---
-
-/**
- * Endpoint for generating the main saree try-on image.
- */
 app.post('/api/generate', async (req, res) => {
-    const { modelImage, spec, tweakPrompt } = req.body;
+  const { modelImage, spec, tweakPrompt } = req.body;
 
-    if (!modelImage || !spec) {
-        return res.status(400).json({ message: 'Missing modelImage or spec in request body.' });
+  if (!modelImage || !spec) {
+    return res.status(400).json({ message: 'Missing modelImage or spec in request body.' });
+  }
+
+  try {
+    const parts = [];
+    parts.push({ text: SAREE_PROMPT_TEMPLATE });
+    parts.push({ text: "\n\n--- Start of Inputs ---" });
+    parts.push({ text: "\n**Input 1: Photo of the Person**" });
+    parts.push({ inlineData: { mimeType: modelImage.mimeType, data: modelImage.data } });
+    parts.push({ text: "\n**Input 2: Saree Reference Images**" });
+    if (spec?.pallu?.image) {
+      parts.push({ text: "Reference Image for Saree Pallu:" });
+      parts.push({ inlineData: { mimeType: spec.pallu.image.mimeType, data: spec.pallu.image.data } });
     }
-    
-    try {
-        const parts: Part[] = [];
-        parts.push({ text: SAREE_PROMPT_TEMPLATE });
-        parts.push({ text: "\n\n--- Start of Inputs ---" });
-        parts.push({ text: "\n**Input 1: Photo of the Person**" });
-        parts.push({ inlineData: { mimeType: modelImage.mimeType, data: modelImage.data } });
-        parts.push({ text: "\n**Input 2: Saree Reference Images**" });
-        if (spec.pallu.image) {
-            parts.push({ text: "Reference Image for Saree Pallu:" });
-            parts.push({ inlineData: { mimeType: spec.pallu.image.mimeType, data: spec.pallu.image.data } });
-        }
-        if (spec.body.image) {
-            parts.push({ text: "Reference Image for Saree Body:" });
-            parts.push({ inlineData: { mimeType: spec.body.image.mimeType, data: spec.body.image.data } });
-        }
-        let blouseDescription = spec.blouse.type === 'running' ? "Running blouse, matching the saree body." : `Custom blouse: ${spec.blouse.description}.`;
-        parts.push({ text: `\n\n**Input 3: Blouse Instructions**\n${blouseDescription}` });
-        if (tweakPrompt) {
-            parts.push({ text: `\n\n**Additional Tweaks:** ${tweakPrompt}` });
-        }
-        parts.push({ text: "\n--- End of Inputs ---" });
-
-        const response = await ai.models.generateContent({
-            model: generationModel,
-            contents: { parts },
-            config: { responseModalities: [Modality.IMAGE] },
-        });
-
-        const imageData = response.candidates?.[0]?.content?.parts?.[0]?.inlineData?.data;
-        if (imageData) {
-            res.json({ imageData });
-        } else {
-            const finishReason = response.candidates?.[0]?.finishReason;
-            const message = finishReason === 'SAFETY' ? "Generation stopped for safety reasons." : "Model did not return an image.";
-            res.status(500).json({ message });
-        }
-    } catch (error) {
-        res.status(500).json({ message: getApiErrorMessage(error) });
+    if (spec?.body?.image) {
+      parts.push({ text: "Reference Image for Saree Body:" });
+      parts.push({ inlineData: { mimeType: spec.body.image.mimeType, data: spec.body.image.data } });
     }
+    const blouseDescription =
+      spec?.blouse?.type === 'running'
+        ? "Running blouse, matching the saree body."
+        : `Custom blouse: ${spec?.blouse?.description || 'N/A'}.`;
+    parts.push({ text: `\n\n**Input 3: Blouse Instructions**\n${blouseDescription}` });
+    if (tweakPrompt) parts.push({ text: `\n\n**Additional Tweaks:** ${tweakPrompt}` });
+    parts.push({ text: "\n--- End of Inputs ---" });
+
+    const response = await ai.models.generateContent({
+      model: generationModel,
+      contents: { parts },
+      config: { responseModalities: [Modality.IMAGE] },
+    });
+
+    const imageData = response.candidates?.[0]?.content?.parts?.[0]?.inlineData?.data;
+    if (imageData) {
+      return res.json({ imageData });
+    } else {
+      const finishReason = response.candidates?.[0]?.finishReason;
+      const message = finishReason === 'SAFETY' ? "Generation stopped for safety reasons." : "Model did not return an image.";
+      return res.status(500).json({ message });
+    }
+  } catch (error) {
+    return res.status(500).json({ message: getApiErrorMessage(error) });
+  }
 });
 
-/**
- * Endpoint for editing an image with a prompt.
- */
 app.post('/api/edit', async (req, res) => {
-    const { image, prompt } = req.body;
+  const { image, prompt } = req.body;
 
-    if (!image || !prompt) {
-        return res.status(400).json({ message: 'Missing image or prompt in request body.' });
+  if (!image || !prompt) {
+    return res.status(400).json({ message: 'Missing image or prompt in request body.' });
+  }
+
+  try {
+    const contents = {
+      parts: [
+        { inlineData: { data: image.data, mimeType: image.mimeType } },
+        { text: prompt },
+      ],
+    };
+
+    const response = await ai.models.generateContent({
+      model: generationModel,
+      contents,
+      config: { responseModalities: [Modality.IMAGE] },
+    });
+
+    const imageData = response.candidates?.[0]?.content?.parts?.[0]?.inlineData?.data;
+    if (imageData) {
+      return res.json({ imageData });
+    } else {
+      const finishReason = response.candidates?.[0]?.finishReason;
+      const message = finishReason === 'SAFETY' ? "Edit stopped for safety reasons." : "Model did not return an image.";
+      return res.status(500).json({ message });
     }
-
-    try {
-        const contents = {
-            parts: [
-                { inlineData: { data: image.data, mimeType: image.mimeType } },
-                { text: prompt },
-            ],
-        };
-
-        const response = await ai.models.generateContent({
-            model: generationModel,
-            contents,
-            config: { responseModalities: [Modality.IMAGE] },
-        });
-        
-        const imageData = response.candidates?.[0]?.content?.parts?.[0]?.inlineData?.data;
-        if (imageData) {
-            res.json({ imageData });
-        } else {
-            const finishReason = response.candidates?.[0]?.finishReason;
-            const message = finishReason === 'SAFETY' ? "Edit stopped for safety reasons." : "Model did not return an image.";
-            res.status(500).json({ message });
-        }
-    } catch (error) {
-        res.status(500).json({ message: getApiErrorMessage(error) });
-    }
+  } catch (error) {
+    return res.status(500).json({ message: getApiErrorMessage(error) });
+  }
 });
-
 
 // --- START SERVER ---
 app.listen(port, () => {
-  console.log(`SareeStage backend listening at http://localhost:${port}`);
+  console.log(`SareeStage backend listening on :${port}`);
 });
