@@ -1,4 +1,5 @@
-import express, { Request, Response, NextFunction } from "express";
+import express, { Request, Response } from "express";
+import cors from "cors";
 import "dotenv/config";
 import { GoogleGenAI, Modality } from "@google/genai";
 
@@ -37,21 +38,11 @@ const app = express();
 const port = Number(process.env.PORT || 3001);
 
 // ---------- CORS config ----------
-// Explicitly handle CORS and pre-flight (OPTIONS) requests. This is often more
-// reliable than the `cors` package in certain environments (like Vercel).
-app.use((req: Request, res: Response, next: NextFunction) => {
-  res.setHeader("Access-Control-Allow-Origin", "*");
-  res.setHeader("Access-Control-Allow-Methods", "POST, OPTIONS");
-  res.setHeader("Access-Control-Allow-Headers", "Content-Type");
-  res.setHeader("Vary", "Origin");
+// Use the standard `cors` package to handle cross-origin requests.
+// This is more robust than a manual implementation, especially for
+// handling pre-flight (OPTIONS) requests in various deployment environments.
+app.use(cors());
 
-  // Handle pre-flight requests from the browser
-  if (req.method === "OPTIONS") {
-    return res.sendStatus(200);
-  }
-
-  next();
-});
 
 // Body parser (20MB for base64 images)
 app.use(express.json({ limit: "20mb" }));
