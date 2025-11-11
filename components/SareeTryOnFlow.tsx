@@ -24,7 +24,8 @@ interface SareeTryOnFlowProps {
 export const SareeTryOnFlow: React.FC<SareeTryOnFlowProps> = ({ onOpenLegal }) => {
     const [screen, setScreen] = useState<SareeScreen>('upload');
     const [isLoading, setIsLoading] = useState<boolean>(false);
-    const [error, setError] = useState<string | null>(null);
+    const [error, setError] = useState<string | null>(null); // For initial generation errors
+    const [retryError, setRetryError] = useState<string | null>(null); // For retry errors on result screen
     const [generatedImage, setGeneratedImage] = useState<string | null>(null);
     const { useCredit } = useUser();
     
@@ -32,38 +33,41 @@ export const SareeTryOnFlow: React.FC<SareeTryOnFlowProps> = ({ onOpenLegal }) =
     const [modelFile, setModelFile] = useState<UploadedFile | null>(null);
     const [sareeSpec, setSareeSpec] = useState<SareeSpecification | null>(null);
 
+    // Abstracted generation logic to be shared by initial and retry handlers
+    const _performGeneration = useCallback(async (
+        currentModelFile: UploadedFile,
+        currentSareeSpec: SareeSpecification,
+        tweakPrompt: string
+    ): Promise<string> => {
+        const modelB64 = await fileToBase64(currentModelFile.file);
+            
+        const [bodyB64, palluB64] = await Promise.all([
+            uploadedFileToBase64(currentSareeSpec.body.image),
+            uploadedFileToBase64(currentSareeSpec.pallu.image),
+        ]);
+
+        const specWithB64 = {
+            body: { text: currentSareeSpec.body.text, image: bodyB64 },
+            pallu: { text: currentSareeSpec.pallu.text, image: palluB64 },
+            blouse: currentSareeSpec.blouse,
+        };
+        
+        return await generateSareeImage(modelB64, specWithB64, tweakPrompt);
+    }, []);
+
     const handleGenerate = useCallback(async (
         currentModelFile: UploadedFile, 
-        currentSareeSpec: SareeSpecification, 
-        tweakPrompt: string = ''
+        currentSareeSpec: SareeSpecification
     ) => {
         setIsLoading(true);
         setError(null);
+        setRetryError(null);
 
         try {
-            const modelB64 = await fileToBase64(currentModelFile.file);
+            const resultB64 = await _performGeneration(currentModelFile, currentSareeSpec, '');
+            useCredit(); // Decrement credit only on successful initial generation
             
-            // Convert spec images to base64 in parallel
-            const [bodyB64, palluB64] = await Promise.all([
-                uploadedFileToBase64(currentSareeSpec.body.image),
-                uploadedFileToBase64(currentSareeSpec.pallu.image),
-            ]);
-
-            const specWithB64 = {
-                body: { text: currentSareeSpec.body.text, image: bodyB64 },
-                pallu: { text: currentSareeSpec.pallu.text, image: palluB64 },
-                blouse: currentSareeSpec.blouse,
-            };
-            
-            const resultB64 = await generateSareeImage(modelB64, specWithB64, tweakPrompt);
-            
-            // Only decrement credit if this is a new generation (not a tweak)
-            if (!tweakPrompt) {
-                useCredit();
-            }
-
             setGeneratedImage(`data:image/png;base64,${resultB64}`);
-            // Store original inputs with previews for the result screen
             setModelFile(currentModelFile);
             setSareeSpec(currentSareeSpec);
             setScreen('result');
@@ -71,11 +75,11 @@ export const SareeTryOnFlow: React.FC<SareeTryOnFlowProps> = ({ onOpenLegal }) =
         } catch (err) {
             console.error(err);
             setError(err instanceof Error ? err.message : 'An unknown error occurred during generation.');
-            setScreen('upload'); // Stay on upload screen if there's an error
+            setScreen('upload'); // On initial failure, go back to upload screen
         } finally {
             setIsLoading(false);
         }
-    }, [useCredit]);
+    }, [_performGeneration, useCredit]);
 
     const handleRetry = useCallback(async (tweakPrompt: string) => {
         if (!modelFile || !sareeSpec) {
@@ -83,14 +87,26 @@ export const SareeTryOnFlow: React.FC<SareeTryOnFlowProps> = ({ onOpenLegal }) =
             setScreen('upload');
             return;
         }
-        // Note: Retries/tweaks do not cost an additional credit.
-        await handleGenerate(modelFile, sareeSpec, tweakPrompt);
-    }, [modelFile, sareeSpec, handleGenerate]);
+        
+        setIsLoading(true);
+        setRetryError(null);
+
+        try {
+            const resultB64 = await _performGeneration(modelFile, sareeSpec, tweakPrompt);
+            setGeneratedImage(`data:image/png;base64,${resultB64}`);
+        } catch (err) {
+            console.error(err);
+            setRetryError(err instanceof Error ? err.message : 'An unknown error occurred during retry.');
+        } finally {
+            setIsLoading(false);
+        }
+    }, [modelFile, sareeSpec, _performGeneration]);
 
     const handleStartOver = () => {
         setScreen('upload');
         setGeneratedImage(null);
         setError(null);
+        setRetryError(null);
         setModelFile(null);
         setSareeSpec(null);
     };
@@ -109,6 +125,8 @@ export const SareeTryOnFlow: React.FC<SareeTryOnFlowProps> = ({ onOpenLegal }) =
                 onRetry={handleRetry}
                 onStartOver={handleStartOver}
                 isLoading={isLoading}
+                error={retryError}
+                onClearError={() => setRetryError(null)}
             />
         );
     }

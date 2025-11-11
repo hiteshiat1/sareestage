@@ -1,3 +1,4 @@
+
 import React, { useState, useMemo } from 'react';
 import { DownloadIcon, RetryIcon } from './icons/ActionIcons';
 import { Spinner } from './Spinner';
@@ -9,6 +10,8 @@ interface ResultScreenProps {
   onRetry: (tweakPrompt: string) => void;
   onStartOver: () => void;
   isLoading: boolean;
+  error: string | null;
+  onClearError: () => void;
 }
 
 interface TweakOption {
@@ -30,6 +33,8 @@ export const ResultScreen: React.FC<ResultScreenProps> = ({
   onRetry,
   onStartOver,
   isLoading,
+  error,
+  onClearError,
 }) => {
   const [selectedTweaks, setSelectedTweaks] = useState<Set<string>>(new Set());
 
@@ -55,6 +60,7 @@ export const ResultScreen: React.FC<ResultScreenProps> = ({
   };
   
   const handleRetryClick = () => {
+      onClearError(); // Clear previous error before trying again
       const tweakPrompt = TWEAK_OPTIONS
         .filter(tweak => selectedTweaks.has(tweak.id))
         .map(tweak => tweak.prompt)
@@ -127,6 +133,11 @@ export const ResultScreen: React.FC<ResultScreenProps> = ({
                         </label>
                     ))}
                 </div>
+                {error && (
+                    <div className="bg-red-100 border border-red-400 text-red-700 px-4 py-3 rounded text-sm my-4" role="alert">
+                        <strong>Error:</strong> {error}
+                    </div>
+                )}
                  <button onClick={handleRetryClick} disabled={isLoading} className="mt-4 flex items-center justify-center w-full bg-fuchsia-600 hover:bg-fuchsia-700 text-white font-bold py-2 px-4 rounded-lg transition duration-300 disabled:bg-gray-400">
                     <RetryIcon />
                     <span className="ml-2">Retry with Selected Tweaks</span>
